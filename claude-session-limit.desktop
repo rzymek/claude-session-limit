@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Claude session limit
+Comment=Shows Claude Code 5h session usage
+Exec=claude-session-limit
+Icon=utilities-system-monitor
+Terminal=false
+X-GNOME-Autostart-enabled=true
