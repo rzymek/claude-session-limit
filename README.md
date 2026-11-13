@@ -1,15 +1,15 @@
 # claude-session-limit
 
-Tiny borderless always-on-top X11 widget (Linux Mint / Cinnamon) showing your
+Tiny (112×36 px) borderless always-on-top X11 widget (Linux Mint / Cinnamon) showing your
 Claude Code 5-hour session usage:
 
 ```
-Session  ███████████░░░░  71%
-Reset    ██████████████░  0:39 @ 19:00
+┌──────────────────┐
+│ ███████83%██░░░░ │   5h session usage (green / amber ≥70% / red ≥90%)
+│ ██0:33 @ 19:00█░ │   elapsed part of the 5h window, time to reset @ reset time
+└──────────────────┘
 ```
 
-- Bar 1: % of the 5h session limit used (green / amber ≥70% / red ≥90%).
-- Bar 2: elapsed part of the 5h window; time until reset (`h:mm`) and reset time (24h).
 - A small red dot in the corner means the last refresh failed (showing stale data).
 
 Uses the Claude CLI login (`~/.claude/.credentials.json`); it never refreshes the

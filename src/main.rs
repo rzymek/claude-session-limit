@@ -22,15 +22,17 @@ const POLL_INTERVAL: Duration = Duration::from_secs(60);
 const SESSION_LEN_SECS: f64 = 5.0 * 3600.0;
 
 // Layout in logical pixels.
-const WIN_W: f64 = 290.0;
-const WIN_H: f64 = 56.0;
-const FONT_SIZE: f32 = 12.0;
+const WIN_W: f64 = 112.0;
+const WIN_H: f64 = 36.0;
+const PAD: f64 = 3.0;
+const GAP: f64 = 2.0;
+const FONT_SIZE: f32 = 11.0;
 
 const BG: u32 = 0x1e1e1e;
 const BORDER: u32 = 0x444444;
 const TRACK: u32 = 0x3a3a3a;
-const TEXT: u32 = 0xdddddd;
-const DIM: u32 = 0x999999;
+const TEXT: u32 = 0xeeeeee;
+const TEXT_ON_FILL: u32 = 0x111111;
 const BLUE: u32 = 0x5b8def;
 const GREEN: u32 = 0x4caf50;
 const AMBER: u32 = 0xffb300;
@@ -104,52 +106,40 @@ impl App {
         c.clear(BG);
         c.border(BORDER);
 
-        let label_x = px(10.0);
-        let bar_x = px(64.0);
-        let bar_w = px(120.0);
-        let bar_h = px(12.0);
-        let value_x = bar_x + bar_w + px(8.0);
-        let row_y = [px(12.0), px(32.0)];
-        let baseline = |y: i32| y + bar_h - px(2.0);
+        let bar_w = c.w as i32 - 2 * px(PAD);
+        let bar_h = (c.h as i32 - 2 * px(PAD) - px(GAP)) / 2;
+        let row1 = (px(PAD), px(PAD), bar_w, bar_h);
+        let row2 = (px(PAD), px(PAD) + bar_h + px(GAP), bar_w, bar_h);
+        let ink = (TEXT_ON_FILL, TEXT);
 
         match (&self.usage, &self.error) {
-            (None, Some(err)) => {
-                c.text(font, fsize, label_x, px(WIN_H / 2.0 + 4.0), err, TEXT);
-            }
-            (None, None) => {
-                c.text(font, fsize, label_x, px(WIN_H / 2.0 + 4.0), "Loading…", DIM);
+            (None, msg) => {
+                let msg = msg.as_deref().unwrap_or("Loading…");
+                let full = (px(PAD), px(PAD), bar_w, c.h as i32 - 2 * px(PAD));
+                c.labeled_bar(font, fsize, full, 0.0, (TRACK, BG), msg, ink);
             }
             (Some(u), err) => {
-                // Row 1: session usage.
-                c.text(font, fsize, label_x, baseline(row_y[0]), "Session", DIM);
+                // Bar 1: session usage.
                 let pct = u.utilization.clamp(0.0, 100.0);
-                c.bar(bar_x, row_y[0], bar_w, bar_h, pct / 100.0, usage_color(pct), TRACK);
-                c.text(font, fsize, value_x, baseline(row_y[0]), &format!("{:.0}%", u.utilization), TEXT);
+                let label = format!("{:.0}%", u.utilization);
+                c.labeled_bar(font, fsize, row1, pct / 100.0, (usage_color(pct), TRACK), &label, ink);
 
-                // Row 2: time until reset.
-                c.text(font, fsize, label_x, baseline(row_y[1]), "Reset", DIM);
+                // Bar 2: elapsed part of the 5h window, time until reset.
                 match u.resets_at {
                     Some(reset) => {
                         let remaining = (reset - Local::now()).max(TimeDelta::zero());
-                        let secs = remaining.num_seconds() as f64;
-                        let elapsed = 1.0 - secs / SESSION_LEN_SECS;
-                        c.bar(bar_x, row_y[1], bar_w, bar_h, elapsed, BLUE, TRACK);
+                        let elapsed = 1.0 - remaining.num_seconds() as f64 / SESSION_LEN_SECS;
                         let mins = remaining.num_minutes();
-                        let txt = format!("{}:{:02}", mins / 60, mins % 60);
-                        let adv = c.text(font, fsize, value_x, baseline(row_y[1]), &txt, TEXT);
-                        let at = format!(" @ {}", reset.format("%H:%M"));
-                        c.text(font, fsize, value_x + adv, baseline(row_y[1]), &at, DIM);
+                        let label = format!("{}:{:02} @ {}", mins / 60, mins % 60, (reset + TimeDelta::seconds(30)).format("%H:%M"));
+                        c.labeled_bar(font, fsize, row2, elapsed, (BLUE, TRACK), &label, ink);
                     }
-                    None => {
-                        c.bar(bar_x, row_y[1], bar_w, bar_h, 0.0, BLUE, TRACK);
-                        c.text(font, fsize, value_x, baseline(row_y[1]), "no session", DIM);
-                    }
+                    None => c.labeled_bar(font, fsize, row2, 0.0, (BLUE, TRACK), "no session", ink),
                 }
 
                 // Stale-data indicator: the last refresh failed.
                 if err.is_some() {
-                    let d = px(5.0);
-                    c.rect(c.w as i32 - d - px(3.0), px(3.0), d, d, RED);
+                    let d = px(4.0);
+                    c.rect(c.w as i32 - d, 0, d, d, RED);
                 }
             }
         }
