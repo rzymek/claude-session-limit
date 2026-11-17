@@ -18,7 +18,7 @@ use winit::keyboard::{Key, NamedKey};
 use winit::platform::x11::{WindowAttributesExtX11, WindowType};
 use winit::window::{Window, WindowId, WindowLevel};
 
-const POLL_INTERVAL: Duration = Duration::from_secs(60);
+const POLL_INTERVAL: Duration = Duration::from_secs(3*60);
 const SESSION_LEN_SECS: f64 = 5.0 * 3600.0;
 /// Non-session limits at or above this percentage get their own bar.
 const LIMIT_WARN_PCT: f64 = 75.0;
