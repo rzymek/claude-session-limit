@@ -1,4 +1,4 @@
-//! Fetching the 5-hour session usage using the Claude CLI's OAuth login.
+//! Fetching Claude usage limits using the Claude CLI's OAuth login.
 
 use chrono::{DateTime, Local, Utc};
 use serde::Deserialize;
@@ -6,13 +6,40 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+const SESSION_KEY: &str = "five_hour";
+
+/// One rate-limit window from the usage response (`five_hour`, `seven_day`, ...).
+#[derive(Debug, Clone)]
+pub struct Limit {
+    /// Raw key from the response, e.g. `seven_day_opus`.
+    pub key: String,
+    /// Percentage (0-100) of the limit used.
+    pub utilization: f64,
+    /// When the window resets; `None` if not active / not applicable.
+    pub resets_at: Option<DateTime<Local>>,
+}
+
+impl Limit {
+    /// Short human-readable name: `5h`, `7d`, `7d opus`, `extra`, ...
+    pub fn label(&self) -> String {
+        match self.key.as_str() {
+            SESSION_KEY => "5h".into(),
+            "seven_day" => "7d".into(),
+            k => match k.strip_prefix("seven_day_") {
+                Some(rest) => format!("7d {}", rest.replace('_', " ")),
+                None => k.trim_end_matches("_usage").replace('_', " "),
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Usage {
-    /// Percentage (0-100) of the 5h session limit used.
-    pub utilization: f64,
-    /// When the current 5h window resets; `None` if no session is active.
-    pub resets_at: Option<DateTime<Local>>,
+    /// The 5-hour session window.
+    pub session: Limit,
+    /// All other limits present in the response (weekly, per-model, extra usage).
+    pub others: Vec<Limit>,
+    pub fetched_at: DateTime<Local>,
 }
 
 #[derive(Deserialize)]
@@ -28,17 +55,6 @@ struct OAuth {
     /// Unix epoch milliseconds.
     #[serde(rename = "expiresAt")]
     expires_at: Option<i64>,
-}
-
-#[derive(Deserialize)]
-struct UsageResponse {
-    five_hour: Option<Window>,
-}
-
-#[derive(Deserialize)]
-struct Window {
-    utilization: Option<f64>,
-    resets_at: Option<String>,
 }
 
 fn credentials_path() -> PathBuf {
@@ -70,6 +86,32 @@ fn read_token() -> Result<String, String> {
     Ok(oauth.access_token)
 }
 
+/// Collects every top-level object that has a numeric `utilization`, so new
+/// or renamed limits show up without code changes.
+fn parse(body: &serde_json::Value) -> Result<Usage, String> {
+    let obj = body.as_object().ok_or("Unexpected response")?;
+    let mut limits: Vec<Limit> = obj
+        .iter()
+        // Skip turned-off limits (e.g. `extra_usage` with `is_enabled: false`).
+        .filter(|(_, v)| v.get("is_enabled").and_then(|e| e.as_bool()) != Some(false))
+        .filter_map(|(k, v)| {
+            Some(Limit {
+                key: k.clone(),
+                utilization: v.get("utilization")?.as_f64()?,
+                resets_at: v
+                    .get("resets_at")
+                    .and_then(|s| s.as_str())
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .map(|t| t.with_timezone(&Local)),
+            })
+        })
+        .collect();
+    limits.sort_by(|a, b| (a.key.starts_with("extra"), &a.key).cmp(&(b.key.starts_with("extra"), &b.key)));
+    let i = limits.iter().position(|l| l.key == SESSION_KEY).ok_or("No 5h usage data")?;
+    let session = limits.remove(i);
+    Ok(Usage { session, others: limits, fetched_at: Local::now() })
+}
+
 pub fn fetch() -> Result<Usage, String> {
     let token = read_token()?;
     let agent = ureq::AgentBuilder::new()
@@ -81,19 +123,15 @@ pub fn fetch() -> Result<Usage, String> {
         .set("Authorization", &format!("Bearer {token}"))
         .set("anthropic-beta", "oauth-2025-04-20")
         .call();
-    let body: UsageResponse = match resp {
+    let body: serde_json::Value = match resp {
         Ok(r) => r.into_json().map_err(|_| "Unexpected response".to_string())?,
         Err(ureq::Error::Status(401, _)) => return Err("Token expired - run claude".into()),
         Err(ureq::Error::Status(429, _)) => return Err("Rate limited".into()),
         Err(ureq::Error::Status(code, _)) => return Err(format!("HTTP {code}")),
         Err(_) => return Err("Network error".into()),
     };
-    let w = body.five_hour.ok_or("No 5h usage data")?;
-    Ok(Usage {
-        utilization: w.utilization.unwrap_or(0.0),
-        resets_at: w
-            .resets_at
-            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-            .map(|t| t.with_timezone(&Local)),
-    })
+    if std::env::var_os("CLAUDE_USAGE_DEBUG").is_some() {
+        eprintln!("{body:#}");
+    }
+    parse(&body)
 }
