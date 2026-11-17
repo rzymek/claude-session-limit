@@ -24,7 +24,7 @@ Memory: ~8 MB RSS.
 | --- | --- |
 | Left drag | Move window (position is remembered in `~/.config/claude-session-limit/pos`) |
 | Right click / `r` / F5 | Refresh now |
-| Middle click / `q` / Esc | Quit |
+| Middle click | Quit |
 
 ## Build & install
 

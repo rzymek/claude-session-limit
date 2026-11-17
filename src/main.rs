@@ -179,7 +179,8 @@ impl ApplicationHandler<FetchResult> for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => self.quit(event_loop),
+            // Only a middle click quits; ignore WM close requests.
+            WindowEvent::CloseRequested => {}
             WindowEvent::RedrawRequested => self.draw(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 if let Some(w) = &self.window {
@@ -206,7 +207,6 @@ impl ApplicationHandler<FetchResult> for App {
                 event: KeyEvent { logical_key, state: ElementState::Pressed, .. },
                 ..
             } => match logical_key.as_ref() {
-                Key::Named(NamedKey::Escape) | Key::Character("q") => self.quit(event_loop),
                 Key::Character("r") | Key::Named(NamedKey::F5) => {
                     let _ = self.refresh_tx.send(());
                 }

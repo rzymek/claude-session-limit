@@ -40,6 +40,9 @@ impl Canvas<'_> {
         let y0 = y.clamp(0, self.h as i32) as usize;
         let x1 = (x + w).clamp(0, self.w as i32) as usize;
         let y1 = (y + h).clamp(0, self.h as i32) as usize;
+        if x1 <= x0 {
+            return;
+        }
         for row in y0..y1 {
             self.buf[row * self.w + x0..row * self.w + x1].fill(color);
         }
